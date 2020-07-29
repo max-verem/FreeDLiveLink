@@ -26,9 +26,10 @@ public class FreeDLiveLink : ModuleRules
 			new string[]
 			{
 				"Core",
-				// ... add other public dependencies that you statically link with here ...
+                "LiveLinkInterface",
+                "Messaging",
 			}
-			);
+            );
 			
 		
 		PrivateDependencyModuleNames.AddRange(
@@ -38,9 +39,13 @@ public class FreeDLiveLink : ModuleRules
 				"Engine",
 				"Slate",
 				"SlateCore",
-				// ... add private dependencies that you statically link with here ...	
+                "InputCore",
+                "Json",
+                "JsonUtilities",
+                "Networking",
+                "Sockets",
 			}
-			);
+            );
 		
 		
 		DynamicallyLoadedModuleNames.AddRange(
