@@ -44,7 +44,7 @@ After selecting data stream, LiveLink will apply a transformation from that stre
 
 Another thing you need to keep in mind during configuration is Relative/World transformation been applied:
 
-![World Transform](/docs/cfg-0050.png?raw=true "World Transform")
+![World Transform](/docs/cfg-0060.png?raw=true "World Transform")
 
 Uncheck option **World Transform** - you actor will have local Location/Rotation exact as data incoming with Free-D protocol.
 
