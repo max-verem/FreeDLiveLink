@@ -13,8 +13,6 @@
 #include "Sockets.h"
 #include "SocketSubsystem.h"
 
-#include "FreeD.h"
-
 #define LOCTEXT_NAMESPACE "FFreeDLiveLinkSource"
 
 #define RECV_BUFFER_SIZE 1024 * 1024
@@ -27,6 +25,9 @@ FFreeDLiveLinkSource::FFreeDLiveLinkSource(FIPv4Endpoint InEndpoint)
 {
 	// defaults
 	DeviceEndpoint = InEndpoint;
+
+    memset(current_data, 0, sizeof(current_data));
+    memset(current_cnt, 0, sizeof(current_cnt));
 
 	SourceStatus = LOCTEXT("SourceStatus_DeviceNotFound", "Device Not Found");
 	SourceType = LOCTEXT("FreedLiveLinkSource", "Free-D LiveLink");
@@ -72,12 +73,7 @@ FFreeDLiveLinkSource::FFreeDLiveLinkSource(FIPv4Endpoint InEndpoint)
 FFreeDLiveLinkSource::~FFreeDLiveLinkSource()
 {
 	Stop();
-	if (Thread != nullptr)
-	{
-		Thread->WaitForCompletion();
-		delete Thread;
-		Thread = nullptr;
-	}
+
 	if (Socket != nullptr)
 	{
 		Socket->Close();
@@ -94,7 +90,6 @@ void FFreeDLiveLinkSource::ReceiveClient(ILiveLinkClient* InClient, FGuid InSour
 
 bool FFreeDLiveLinkSource::IsSourceStillValid() const
 {
-	// Source is valid if we have a valid thread and socket
 	bool bIsSourceValid = !Stopping && Thread != nullptr && Socket != nullptr;
 	return bIsSourceValid;
 }
@@ -110,14 +105,25 @@ bool FFreeDLiveLinkSource::RequestSourceShutdown()
 
 void FFreeDLiveLinkSource::Start()
 {
-	ThreadName = "FREED UDP Receiver ";
-	ThreadName.AppendInt(FAsyncThreadIndex::GetNext());
-	Thread = FRunnableThread::Create(this, *ThreadName, 128 * 1024, TPri_AboveNormal, FPlatformAffinity::GetPoolThreadMask());
+    Stopping = false;
+
+    if (Thread == nullptr)
+    {
+        ThreadName = "FREED UDP Receiver ";
+        ThreadName.AppendInt(FAsyncThreadIndex::GetNext());
+        Thread = FRunnableThread::Create(this, *ThreadName, 128 * 1024, TPri_AboveNormal, FPlatformAffinity::GetPoolThreadMask());
+    }
 }
 
 void FFreeDLiveLinkSource::Stop()
 {
-	Stopping = true;
+    Stopping = true;
+
+    if (Thread != nullptr)
+    {
+        Thread->WaitForCompletion();
+        Thread = nullptr;
+    }
 }
 
 uint32 FFreeDLiveLinkSource::Run()
@@ -138,10 +144,14 @@ uint32 FFreeDLiveLinkSource::Run()
 				{
 					if (Read > 0)
 					{
-						TSharedPtr<TArray<uint8>, ESPMode::ThreadSafe> ReceivedData = MakeShareable(new TArray<uint8>());
-						ReceivedData->SetNumUninitialized(Read);
-						memcpy(ReceivedData->GetData(), RecvBuffer.GetData(), Read);
-						AsyncTask(ENamedThreads::GameThread, [this, ReceivedData]() { HandleReceivedData(ReceivedData); });
+                        FreeD_D1_t data;
+
+                        if (!FreeD_D1_unpack(RecvBuffer.GetData(), Read, &data))
+                        {
+                            FScopeLock lock(&currentLock);
+                            current_data[data.ID] = data;
+                            current_cnt[data.ID]++;
+                        }
 					}
 				}
 			}
@@ -204,21 +214,8 @@ static void q_from_euler(q_type destQuat, double yaw, double pitch, double roll)
 
 }  /* q_from_euler */
 
-
-void FFreeDLiveLinkSource::HandleReceivedData(TSharedPtr<TArray<uint8>, ESPMode::ThreadSafe> ReceivedData)
+void FFreeDLiveLinkSource::UpdateData(FreeD_D1_t& data)
 {
-    int i = 0;
-    uint8 buf[1024];
-    FreeD_D1_t data;
-
-    for (uint8& Byte : *ReceivedData.Get())
-    {
-        buf[i++] = Byte;
-    }
-
-    if (FreeD_D1_unpack(buf, i, &data))
-        return;
-
     FVector tLocation = FVector(data.X / 10.0, data.Y / 10.0, data.Z / 10.0);
 
     q_type d_quat;
@@ -249,19 +246,25 @@ void FFreeDLiveLinkSource::HandleReceivedData(TSharedPtr<TArray<uint8>, ESPMode:
     FLiveLinkTransformFrameData& TransformFrameData = *TransformFrameDataStruct.Cast<FLiveLinkTransformFrameData>();
     TransformFrameData.Transform = tTransform;
     Client->PushSubjectFrameData_AnyThread({ SourceGuid, SubjectName }, MoveTemp(TransformFrameDataStruct));
-
-#if 0
-    /*
-        FLiveLinkCameraFrameData
-        https://docs.unrealengine.com/en-US/API/Runtime/LiveLinkInterface/Roles/FLiveLinkCameraFrameData/index.html
-    */
-
-    FLiveLinkFrameDataStruct CameraFrameDataStruct = FLiveLinkFrameDataStruct(FLiveLinkCameraFrameData::StaticStruct());
-    FLiveLinkCameraFrameData& CameraFrameData = *CameraFrameDataStruct.Cast<FLiveLinkCameraFrameData>();
-    CameraFrameData.Transform = tTransform;
-    Client->PushSubjectFrameData_AnyThread({ SourceGuid, "CAMERA" }, MoveTemp(CameraFrameDataStruct));
-#endif
-
 }
 
+void FFreeDLiveLinkSource::Update()
+{
+    int i;
+
+    for (i = 0; i < 256; i++)
+    {
+        FreeD_D1_t data;
+
+        if (current_cnt[i])
+        {
+            FScopeLock lock(&currentLock);
+            data = current_data[i];
+        }
+        else
+            continue;
+
+        UpdateData(data);
+    }
+}
 #undef LOCTEXT_NAMESPACE

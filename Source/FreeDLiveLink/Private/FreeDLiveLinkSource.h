@@ -7,6 +7,9 @@
 #include "HAL/ThreadSafeBool.h"
 #include "IMessageContext.h"
 #include "Interfaces/IPv4/IPv4Endpoint.h"
+#include "Misc/ScopeLock.h"
+
+#include "FreeD.h"
 
 class FRunnableThread;
 class FSocket;
@@ -32,7 +35,7 @@ public:
 	virtual FText GetSourceType() const override { return SourceType; };
 	virtual FText GetSourceMachineName() const override { return SourceMachineName; }
 	virtual FText GetSourceStatus() const override { return SourceStatus; }
-
+    virtual void Update() override;
 	// End ILiveLinkSource Interface
 
 	// Begin FRunnable Interface
@@ -44,9 +47,6 @@ public:
 	virtual void Exit() override { }
 
 	// End FRunnable Interface
-
-	void HandleReceivedData(TSharedPtr<TArray<uint8>, ESPMode::ThreadSafe> ReceivedData);
-
 private:
 
 	ILiveLinkClient* Client;
@@ -80,9 +80,11 @@ private:
 	// Time to wait between attempted receives
 	FTimespan WaitTime;
 
-	// List of subjects we've already encountered
-	TSet<FName> EncounteredSubjects;
+    // Buffer to receive socket data into
+    TArray<uint8> RecvBuffer;
 
-	// Buffer to receive socket data into
-	TArray<uint8> RecvBuffer;
+    FCriticalSection currentLock;
+    FreeD_D1_t current_data[256];
+    int current_cnt[256];
+    void UpdateData(FreeD_D1_t& data);
 };
