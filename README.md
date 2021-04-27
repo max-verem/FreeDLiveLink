@@ -2,7 +2,7 @@
 LiveLink plugin for Unreal Engine (UE) to handle Free-D protol for camera positioning and rotation
 
 # Binaries
-Latest build for UE 4.25.1 available at http://research.m1stereo.tv/ue/FreeDLiveLink.7z, for 4.26.1 available at http://research.m1stereo.tv/ue/FreeDLiveLink--4.26.1.7z
+Latest build for UE 4.25.1 available at http://research.m1stereo.tv/ue/FreeDLiveLink.7z, for 4.26.1 available at http://research.m1stereo.tv/ue/FreeDLiveLink-4.26.1.7z
 
 
 # Usage
